@@ -53,6 +53,8 @@ app.get('/api/health', (_req, res) =>
 app.use('/api', routes);
 
 if (env.nodeEnv === 'production') {
+  // Keep unmatched API routes as JSON 404s instead of returning the SPA shell.
+  app.use('/api', notFoundHandler);
   const clientDist = path.resolve(__dirname, '../client/dist');
   app.use(express.static(clientDist));
   app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));

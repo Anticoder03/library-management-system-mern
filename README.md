@@ -17,7 +17,8 @@ A complete, production-quality **MERN** (MongoDB, Express, React, Node.js) libra
 9. [API documentation](#api-documentation)
 10. [Business rules](#business-rules)
 11. [Production notes](#production-notes)
-12. [Troubleshooting](#troubleshooting)
+12. [Deploying to Render](#deploying-to-render)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -292,6 +293,125 @@ Send authenticated requests with `Authorization: Bearer <token>`.
 4. Serve uploads through a CDN or object storage in a multi-instance deployment (local `server/uploads` is instance-local).
 5. Replace seeded credentials and disable public registration if only staff should create accounts.
 6. Add a MongoDB replica set if you want to wrap multi-document operations in transactions. Current operations use atomic updates and explicit safeguards without requiring a replica set.
+
+---
+
+## Deploying to Render
+
+The project is configured for a **single Render Web Service** that serves both the REST API and the built React client. This is the recommended setup: no CORS origin to keep in sync, no build-time API URL to manage, and `/api/health` works immediately.
+
+### What was added for Render
+
+- **`render.yaml`** — Blueprint defining the Web Service, build/start commands and health check.
+- **Root `start` script** (`npm --prefix server start`) — the command Render runs.
+- **`engines.node >= 20`** — pins a supported Node runtime.
+- Express serves `client/dist` when `NODE_ENV=production` and returns JSON 404s for unknown `/api` routes instead of the SPA shell.
+- CORS falls back to Render's `RENDER_EXTERNAL_URL`, so same-origin writes work without manual configuration.
+
+### Prerequisites
+
+1. Push this project to GitHub/GitLab. The Blueprint deploys the `main` branch (change `branch` in `render.yaml` if yours differs).
+2. Create a MongoDB Atlas cluster (Render has no managed MongoDB).
+   - Create a database user with read/write access.
+   - Under **Network Access**, allow `0.0.0.0/0` (Render free instances do not have static outbound IPs).
+   - Copy the SRV connection string, e.g. `mongodb+srv://user:password@cluster.mongodb.net/smart_library?retryWrites=true&w=majority`.
+3. Generate a strong JWT secret:
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+   ```
+
+### Deploy with the Blueprint (recommended)
+
+1. Render Dashboard → **New +** → **Blueprint** → connect your repository.
+2. Render reads `render.yaml` and prompts for the secret values:
+   - `MONGO_URI` — your Atlas connection string.
+   - `JWT_SECRET` — the random secret from above.
+   - `CLIENT_URL` — your service URL, e.g. `https://smart-library.onrender.com`. This can also be filled in after the first deploy.
+3. Click **Apply**. Render installs root/server/client dependencies, builds the client and starts the API.
+4. When the service shows **Live**, open its URL — the React app should load.
+5. Visit `<your-url>/api/health`; expect `{"success":true,"status":"ok",…}`.
+
+### Deploy manually (without the Blueprint)
+
+Create a **Web Service** with these exact settings:
+
+| Setting | Value |
+| --- | --- |
+| Runtime | Node |
+| Build command | `npm ci --omit=dev && npm --prefix server ci --omit=dev && npm --prefix client ci && npm run build` |
+| Start command | `npm start` |
+| Health check path | `/api/health` |
+| Plan | Free, or Starter if you need always-on |
+| Root directory | `.` |
+
+Then add the environment variables from the next table.
+
+### Environment variables on Render
+
+| Key | Value | Notes |
+| --- | --- | --- |
+| `NODE_ENV` | `production` | **Required** — Express only serves `client/dist` in production mode. |
+| `MONGO_URI` | Atlas SRV string | Secret. Include the database name and URL-encode special characters in the password. |
+| `JWT_SECRET` | long random string | Secret. Keep it stable across redeploys or all sessions are invalidated. |
+| `CLIENT_URL` | `https://<app>.onrender.com` | Comma-separated CORS allow-list. Leave blank on a single service — Render's `RENDER_EXTERNAL_URL` is used automatically. Set it for custom domains or split deployments. |
+| `PORT` | *do not set* | Render injects it; the server already reads `process.env.PORT`. |
+| `RENDER_EXTERNAL_URL` | *set by Render* | Automatic CORS fallback when `CLIENT_URL` is blank. Do not override. |
+| `VITE_API_URL` | *do not set* | Must stay unset for the single-service setup so the client calls `/api` on its own origin. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | optional | Enables emailed password resets. Without them a reset token is only returned in development. |
+| `BORROW_LIMIT`, `LOAN_PERIOD_DAYS`, `FINE_PER_DAY`, `MAX_RESERVATIONS` | optional | Override business rules. |
+
+### First-run data
+
+The Atlas database starts empty. After the first successful deploy, seed it **once**:
+
+- **Option A — Render Shell:** service → **Shell** → `npm run seed`.
+- **Option B — your machine:** point local `server/.env` at the same Atlas `MONGO_URI`, then run `npm run seed` from the project root.
+
+Expected output includes `Seed completed successfully.` and counts `{ users: 10, books: 16, categories: 6, borrows: 10, reservations: 3, fines: 3 }`.
+
+Then sign in with the accounts in [Seed data & default accounts](#seed-data--default-accounts) and **change those passwords immediately**.
+
+### Deployment checklist
+
+- [ ] `/api/health` returns `success: true`.
+- [ ] The app loads and redirects to `/login`.
+- [ ] Admin login works and the dashboard charts render.
+- [ ] Books and members pages load data from MongoDB.
+- [ ] Issuing a book decrements its available copies.
+- [ ] Uploading a book cover saves and displays the image.
+- [ ] Render logs show no errors.
+
+### Optional: two-service setup (Static Site + API)
+
+If you prefer separate services:
+
+1. **Web Service (API):** same build command as above, start `npm start`, set `CLIENT_URL=https://<frontend>.onrender.com`.
+2. **Static Site (client):**
+   - Build command: `npm --prefix client ci && npm --prefix client run build`
+   - Publish directory: `client/dist`
+   - Environment: `VITE_API_URL=https://<api>.onrender.com`
+   - `VITE_API_URL` is baked into the bundle at **build** time — set it before building, and rebuild after changing it.
+3. CORS requires `CLIENT_URL` to match the Static Site origin exactly (scheme, host, port).
+
+### Render-specific caveats
+
+- **Uploads are ephemeral.** `server/uploads` is instance-local storage. Files survive normal traffic but disappear on redeploy, restart or when a free instance spins down; the MongoDB `coverImage` paths then point at missing files. For persistent uploads, swap the storage engine in `server/middleware/upload.js` for object storage (S3/Cloudinary) and re-upload or re-seed covers after a redeploy.
+- **Free-plan cold starts.** The first request after inactivity can take ~30–60 seconds. Use a paid plan or an uptime monitor if that matters.
+- **No `.env` files are uploaded.** All configuration must be set as Render environment variables; `server/.env` and `client/.env` are gitignored.
+- **Lock files are committed.** `package-lock.json` exists in the root, `server/` and `client/`, which `npm ci` requires.
+- **HTTPS/proxy is handled by Render.** `app.set('trust proxy', 1)` is already enabled so rate limiting sees real client IPs.
+- **Custom domains:** add the domain to `CLIENT_URL`, then configure DNS in Render.
+
+### Render troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Build fails with an `npm ci` lock mismatch | Run `npm install` locally in the root, `server/` and `client/`, then commit all three `package-lock.json` files. |
+| Blank page or 404 when refreshing a route | Confirm `NODE_ENV=production` and start command `npm start`; Express must serve `client/dist`. |
+| API unreachable from the browser | Check `MONGO_URI`, the Atlas IP allowlist, and the database user's permissions. |
+| CORS error in the console | Leave `CLIENT_URL` blank to use `RENDER_EXTERNAL_URL`, or set it to the exact frontend origin including `https://`. |
+| Everyone is logged out after a redeploy | `JWT_SECRET` changed between deploys; keep the same value. |
+| Cover images break after a restart | Expected on the free plan — see the ephemeral uploads caveat above. |
 
 ---
 

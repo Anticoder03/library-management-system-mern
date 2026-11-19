@@ -14,7 +14,10 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET || 'dev-only-insecure-secret-change-me',
   jwtExpire: process.env.JWT_EXPIRE || '7d',
   jwtResetExpire: process.env.JWT_RESET_EXPIRE || '15m',
-  clientUrls: (process.env.CLIENT_URL || 'http://localhost:5173')
+  // Render exposes RENDER_EXTERNAL_URL automatically for web services. Using it
+  // as a fallback keeps same-origin POST/PUT requests (which carry an Origin
+  // header) allowed even before CLIENT_URL is configured.
+  clientUrls: (process.env.CLIENT_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:5173')
     .split(',')
     .map((url) => url.trim())
     .filter(Boolean),
