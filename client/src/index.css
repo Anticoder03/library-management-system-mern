@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-[#f7f8fc] text-ink-900 antialiased;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd0e0 transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-200;
+  }
+
+  input[type='date'],
+  input[type='datetime-local'] {
+    color-scheme: light;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-ink-100 bg-white shadow-card;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-brand-400 focus:ring-4 focus:ring-brand-500/10;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-600 text-white shadow-sm shadow-brand-600/20 hover:-translate-y-0.5 hover:bg-brand-700 hover:shadow-md hover:shadow-brand-600/25;
+  }
+
+  .btn-secondary {
+    @apply btn border border-ink-200 bg-white text-ink-700 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700;
+  }
+
+  .btn-danger {
+    @apply btn bg-rose-600 text-white hover:bg-rose-700;
+  }
+
+  .btn-ghost {
+    @apply btn text-ink-500 hover:bg-ink-50 hover:text-ink-900;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+
+  .table-head {
+    @apply sticky top-0 z-10 bg-ink-50/80 px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-ink-500 backdrop-blur;
+  }
+
+  .table-cell {
+    @apply px-4 py-3.5 text-sm text-ink-700;
+  }
+}
+
+.Toastify__toast {
+  border-radius: 14px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 13px !important;
+  box-shadow: 0 12px 35px -12px rgba(16, 24, 40, 0.35) !important;
+}
